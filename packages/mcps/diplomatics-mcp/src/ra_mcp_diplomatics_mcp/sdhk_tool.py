@@ -24,6 +24,7 @@ def register_sdhk_tool(mcp: FastMCP) -> None:
 
     @mcp.tool(
         name="search_sdhk",
+        title="Search SDHK medieval charters",
         tags={"diplomatics", "sdhk", "search"},
         annotations={"readOnlyHint": True, "openWorldHint": True},
         description=(

@@ -33,6 +33,7 @@ def register_view_sdhk_tool(mcp: FastMCP) -> None:
 
     @mcp.tool(
         name="view_sdhk",
+        title="View SDHK medieval charter",
         tags={"diplomatics", "sdhk", "viewer"},
         annotations={"readOnlyHint": True, "openWorldHint": True},
         description=(

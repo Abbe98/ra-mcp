@@ -24,6 +24,7 @@ def register_mpo_tool(mcp: FastMCP) -> None:
 
     @mcp.tool(
         name="search_mpo",
+        title="Search MPO parchment fragments",
         tags={"diplomatics", "mpo", "search"},
         annotations={"readOnlyHint": True, "openWorldHint": True},
         description=(
