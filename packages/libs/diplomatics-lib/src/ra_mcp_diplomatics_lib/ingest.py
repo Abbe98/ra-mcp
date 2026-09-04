@@ -117,6 +117,9 @@ def ingest_mpo(db: lancedb.DBConnection, csv_path: str | Path) -> lancedb.table.
             flat = record.model_dump()
             flat["searchable_text"] = record.searchable_text
             flat["manifest_url"] = record.manifest_url
+            # The canonical "Fr 6000" signature is stored alongside the integer id so
+            # it can be shown and matched without every reader re-deriving it.
+            flat["signature"] = record.signature
             records.append(flat)
 
     if not records:

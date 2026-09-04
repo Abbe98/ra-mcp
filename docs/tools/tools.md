@@ -141,6 +141,20 @@ When the optional dataset modules are installed, the server exposes namespaced s
 
 Note that `sbl` tools are exposed without a namespace prefix (e.g. `search_sbl`, not `sbl:search_sbl`); all other dataset tools are namespaced by module.
 
+### Looking up an MPO fragment by its signature
+
+`diplomatics:search_mpo` departs from the shared shape in one way: MPO fragments are numbered, and Riksarkivet's MPO database
+writes that number as a signature — fragment 6000 is **`Fr 6000`**. So besides `keyword`, the tool takes:
+
+- `mpo_id` — an exact lookup of one or more fragments. It accepts `Fr 6000`, a bare `6000`, `MPO 6000`, the ARKIS image id
+  `R1006000`, a bildvisning or IIIF manifest URL, and a NAD reference code; several at once as `Fr 6000, Fr 6001`.
+- `signature` — a substring filter over the shelf marks (RA number, CCM signum, volume signature, collection), for queries
+  like "everything under volume signature 1539:2".
+
+A `keyword` that unambiguously names a fragment (`Fr 6000`, `R1006000`) is answered as an exact lookup. A bare number is
+ambiguous — it may be an id, a year or a shelf mark — so both the exact record and the full-text matches come back, labelled.
+`keyword` is therefore optional: an `mpo_id` or any filter on its own is a complete query.
+
 ## import_to_label_studio
 
 Imports document pages (images plus optional ALTO transcription) into a Label Studio project for human annotation and transcription feedback. Provided by the optional `label` module.

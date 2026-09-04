@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
 
 from .config import SDHK_MANIFEST_TEMPLATE
+from .identifiers import format_mpo_signature, mpo_bildvisning_url
 
 
 class SDHKRecord(BaseModel):
@@ -181,9 +182,32 @@ class MPORecord(BaseModel):
         return self.iiif_manifest
 
     @property
+    def signature(self) -> str:
+        """Canonical fragment signature — how Riksarkivet's MPO database cites this record.
+
+        The ``signatur`` column is stored as the integer :attr:`id`, but every
+        citation of it (in the database UI and in the codicological literature)
+        writes it as ``"Fr 6000"``.
+        """
+        return format_mpo_signature(self.id)
+
+    @property
+    def image_viewer_url(self) -> str:
+        """Bildvisning URL, derived from the id when the CSV column is missing."""
+        return self.bildvisning_url or mpo_bildvisning_url(self.id)
+
+    @property
     def searchable_text(self) -> str:
-        """Combined text for full-text search indexing."""
+        """Combined text for full-text search indexing.
+
+        Includes the fragment's own identifiers (``Fr 6000``, the RA number, the
+        CCM signum, the volume signature) so a signature typed as a search term
+        finds its record even when it reaches the full-text path.
+        """
         parts = [
+            self.signature,
+            self.ra_number,
+            self.volume_signature,
             self.manuscript_type,
             self.title,
             self.author,

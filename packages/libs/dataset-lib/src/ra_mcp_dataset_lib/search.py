@@ -207,6 +207,60 @@ def lancedb_fts_search(
     return SearchResult(records=page, total_hits=total, keyword=keyword, offset=offset, limit=limit)
 
 
+def lancedb_filter_search(
+    db: lancedb.DBConnection,
+    table_name: str,
+    where: str,
+    *,
+    limit: int,
+    offset: int = 0,
+) -> SearchResult:
+    """Predicate-only search returning one correctly-paginated page and a true total.
+
+    The filter sibling of :func:`lancedb_fts_search`, for the queries that carry no
+    search term at all — "every fragment held at institution X", "the record with
+    this signature". Those cannot go through the full-text path (which requires a
+    non-empty query) and would otherwise be hand-rolled per dataset, losing the
+    shared instrumentation and the real ``total_hits``.
+
+    Rows come back in table order (which, for these ingest-once datasets, is the
+    order of the source file) rather than ranked, since a predicate has no scores.
+
+    Raises:
+        ValueError: if ``where`` is empty, or the paging arguments are out of range.
+    """
+    if not where or not where.strip():
+        raise ValueError("where must be a non-empty predicate")
+    if offset < 0:
+        raise ValueError(f"offset must be >= 0 (got {offset})")
+    if limit < 1:
+        raise ValueError(f"limit must be >= 1 (got {limit})")
+
+    table = db.open_table(table_name)
+
+    attrs = {"db.collection.name": table_name}
+    span_attrs = {"db.system.name": "lancedb", "db.collection.name": table_name, "db.query.filter": where}
+    with _tracer.start_as_current_span(f"filter {table_name}", kind=SpanKind.CLIENT, attributes=span_attrs) as span:
+        start = time.perf_counter()
+        try:
+            matches = table.search().where(where).limit(MAX_TOTAL_COUNT).to_list()
+        except Exception as e:
+            span.set_status(StatusCode.ERROR, f"{type(e).__name__}: {e}")
+            record_span_exception(logger, e)  # also sets error.type on the span
+            _error_counter.add(1, {**attrs, "error.type": type(e).__name__})
+            raise
+        finally:
+            _query_duration.record(time.perf_counter() - start, attrs)
+            _query_counter.add(1, attrs)
+        total = len(matches)
+        page = matches[offset : offset + limit]
+        span.set_attribute("db.response.total_hits", total)
+        span.set_attribute("db.response.returned_rows", len(page))
+        _results_histogram.record(total, attrs)
+
+    return SearchResult(records=page, total_hits=total, keyword="", offset=offset, limit=limit)
+
+
 # --- SQL predicate builders ---------------------------------------------------
 # The dataset libraries express typed filters (a company name, a year range, a
 # gender) as LanceDB ``.where()`` predicates so filtering happens inside the

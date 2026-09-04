@@ -311,6 +311,8 @@ TOOL SELECTION:
 - Read document pages → browse_document with reference code from search results
 - Medieval charters (before 1540) → diplomatics:search_sdhk with keyword
 - Medieval parchment fragments → diplomatics:search_mpo with keyword (German terms)
+- A named MPO fragment ('Fr 6000', 'MPO 6000', a bare '6000', a bildvisning/IIIF URL) → diplomatics:search_mpo with mpo_id (exact lookup, not a keyword search)
+- MPO shelf marks (RA number, CCM signum, volume signature) → diplomatics:search_mpo with signature
 - View SDHK/MPO documents → view_manifest with IIIF manifest URL from search results
 - Biographical lookup (notable Swedes) → sbl:search_sbl with name or keyword
 - View SBL article → sbl:view_sbl_article with article_id from search results
@@ -330,7 +332,7 @@ COVERAGE: The archive has three access tiers:
 - Digitised images: ~73M pages viewable via bildvisaren links
 - AI-transcribed text: ~1.6M pages searchable via search_transcribed — currently court records (hovrätt, trolldomskommissionen, poliskammare, magistrat) from 17th-18th centuries
 - SDHK catalog: 44,000+ medieval charters (diplomatics:search_sdhk) — summaries, Latin texts, seal descriptions
-- MPO catalog: 23,000+ parchment fragments (diplomatics:search_mpo) — codicological descriptions in German
+- MPO catalog: 23,000+ parchment fragments (diplomatics:search_mpo) — codicological descriptions in German, each numbered and cited as 'Fr <number>'
 - SBL: 9,400+ biographical articles (sbl:search_sbl) — notable Swedish individuals and families, medieval to 20th century
 - Sjömanshus: 688,000+ seamen's records (sjomanshus:search_liggare, sjomanshus:search_matrikel) — voyages, registrations, 1700s-1900s
 - Filmcensur: 60,000 film censorship records (filmcensur:search_filmreg) — titles, age ratings, cuts, producers, 1911-2011

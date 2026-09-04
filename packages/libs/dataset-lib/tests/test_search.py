@@ -21,6 +21,7 @@ from ra_mcp_dataset_lib import (
     combine,
     equals,
     format_results,
+    lancedb_filter_search,
     lancedb_fts_search,
     require_keyword,
     require_ordered_range,
@@ -166,6 +167,58 @@ def test_span_captures_behavioural_signals(db, spans):
     assert a["db.query.text"] == "häst"
     assert a["db.query.filter"] == "gender = 'm'"
     assert a["db.response.total_hits"] == 20  # gender='m' half of the 40 häst rows
+
+
+# --- filter-only search -------------------------------------------------------
+
+
+def test_filter_search_returns_the_matching_set(db):
+    # gender='f' spans both text groups (20 häst rows + 10 katt rows) — a set no
+    # single full-text keyword returns, which is why the filter path exists.
+    result = lancedb_filter_search(db, "t", equals("gender", "f"), limit=100)
+    assert result.total_hits == 30
+    assert all(r["gender"] == "f" for r in result.records)
+
+
+def test_filter_search_paginates_without_gaps(db):
+    seen: set[int] = set()
+    total = lancedb_filter_search(db, "t", at_least("id", 0), limit=1).total_hits
+    for off in range(0, total, 10):
+        page = lancedb_filter_search(db, "t", at_least("id", 0), limit=10, offset=off)
+        seen.update(r["id"] for r in page.records)
+    assert len(seen) == total == 50
+
+
+def test_filter_search_has_no_keyword(db):
+    result = lancedb_filter_search(db, "t", equals("gender", "f"), limit=5)
+    assert result.keyword == ""
+
+
+def test_filter_search_empty_predicate_raises(db):
+    with pytest.raises(ValueError, match="non-empty predicate"):
+        lancedb_filter_search(db, "t", "   ", limit=10)
+
+
+@pytest.mark.parametrize(
+    "limit,offset,message",
+    [
+        pytest.param(10, -1, "offset must be >= 0", id="negative-offset"),
+        pytest.param(0, 0, "limit must be >= 1", id="limit-below-one"),
+    ],
+)
+def test_filter_search_guards_paging(db, limit, offset, message):
+    # Same central paging guards as the full-text path, so a filter-only tool
+    # cannot slice a broken window while reporting a nonzero total.
+    with pytest.raises(ValueError, match=message):
+        lancedb_filter_search(db, "t", equals("gender", "m"), limit=limit, offset=offset)
+
+
+def test_filter_search_emits_a_client_span(db, spans):
+    lancedb_filter_search(db, "t", equals("gender", "m"), limit=5)
+    matched = [s for s in spans.get_finished_spans() if s.name == "filter t"]
+    assert matched, "no 'filter t' CLIENT span emitted"
+    assert matched[0].attributes["db.query.filter"] == "gender = 'm'"
+    assert matched[0].attributes["db.response.total_hits"] > 0
 
 
 # --- predicate builders: proven end-to-end against a real table ---------------

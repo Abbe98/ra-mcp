@@ -16,6 +16,7 @@ from ra_mcp_common.telemetry import mark_span_error
 from ra_mcp_dataset_lib import get_lancedb
 from ra_mcp_diplomatics_lib import DiplomaticsSearch
 from ra_mcp_diplomatics_lib.config import LANCEDB_URI
+from ra_mcp_diplomatics_lib.identifiers import format_mpo_signature, parse_mpo_id
 from ra_mcp_viewer_mcp.formatter import build_summary, error_result
 from ra_mcp_viewer_mcp.models import ViewerState
 from ra_mcp_viewer_mcp.resolve import manifest_resolve_document
@@ -37,36 +38,45 @@ def register_view_mpo_tool(mcp: FastMCP) -> None:
         annotations={"readOnlyHint": True, "openWorldHint": True},
         description=(
             "View an MPO parchment fragment in the document viewer with full codicological metadata. "
-            "Takes an MPO ID (from search_mpo results) and opens the interactive viewer "
+            "Takes an MPO fragment id — 'Fr 6000', '6000', 'R1006000' or a bildvisning/IIIF URL all work — "
+            "and opens the interactive viewer "
             "with the fragment images and a metadata panel showing manuscript type, dating, "
             "script, material, content, decoration, and damage descriptions."
         ),
         app=AppConfig(resource_uri=RESOURCE_URI),  # AppConfig: pydantic populate_by_name
     )
     async def view_mpo(
-        mpo_id: Annotated[int, Field(description="MPO fragment ID (e.g. 1, 42).")],
+        mpo_id: Annotated[
+            int | str, Field(description="MPO fragment id/signatur — 'Fr 6000', 6000, 'MPO 6000', 'R1006000', or a bildvisning/IIIF manifest URL.")
+        ],
         ctx: Context,
         highlight_term: Annotated[str | None, Field(description="Optional search term to highlight.")] = None,
         max_pages: Annotated[int, Field(description="Maximum pages to load.", ge=1, le=20)] = 20,
     ) -> ToolResult:
         """Look up MPO record and open in viewer with full metadata."""
+        fragment_id = parse_mpo_id(mpo_id)
+        if fragment_id is None:
+            mark_span_error(f"unparseable MPO id: {mpo_id}", error_type="validation")
+            return error_result(f"Could not read '{mpo_id}' as an MPO fragment id. Use 'Fr 6000', 6000, 'R1006000', or a bildvisning/IIIF URL.")
+        signature = format_mpo_signature(fragment_id)
+
         try:
             db = get_lancedb(LANCEDB_URI)
             searcher = DiplomaticsSearch(db)
-            row = searcher.get_mpo_by_id(mpo_id)
+            row = searcher.get_mpo_by_id(fragment_id)
         except Exception as exc:
             logger.error("view_mpo: DB lookup failed: %s", exc, exc_info=True)
-            mark_span_error(f"Error looking up MPO {mpo_id}: {exc}")
-            return error_result(f"Error looking up MPO {mpo_id}: {exc}")
+            mark_span_error(f"Error looking up MPO {signature}: {exc}")
+            return error_result(f"Error looking up MPO {signature}: {exc}")
 
         if row is None:
-            mark_span_error(f"MPO {mpo_id} not found", error_type="validation")
-            return error_result(f"MPO {mpo_id} not found.")
+            mark_span_error(f"MPO {signature} not found", error_type="validation")
+            return error_result(f"MPO {signature} not found.")
 
         manifest_url = row.get("manifest_url", "")
         if not manifest_url:
-            mark_span_error(f"MPO {mpo_id} has no IIIF manifest — no images available")
-            return error_result(f"MPO {mpo_id} has no IIIF manifest — no images available. The record metadata is:\n\n{format_mpo_info(row)}")
+            mark_span_error(f"MPO {signature} has no IIIF manifest — no images available")
+            return error_result(f"MPO {signature} has no IIIF manifest — no images available. The record metadata is:\n\n{format_mpo_info(row)}")
 
         try:
             resolved = await manifest_resolve_document(manifest_url, max_pages)
@@ -96,11 +106,11 @@ def register_view_mpo_tool(mcp: FastMCP) -> None:
             page_numbers=resolved.page_numbers,
             document_info=document_info,
             highlight_term=highlight_term or "",
-            reference_code=f"MPO {mpo_id}",
+            reference_code=signature,
         )
         sc = await put_state(state)
 
-        logger.info("view_mpo: MPO %d, %d page(s), view_id=%s", mpo_id, len(resolved.image_urls), view_id)
+        logger.info("view_mpo: MPO %s, %d page(s), view_id=%s", signature, len(resolved.image_urls), view_id)
         return ToolResult(
             content=[types.TextContent(type="text", text=summary)],
             structured_content=sc,

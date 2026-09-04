@@ -26,17 +26,36 @@ Search SDHK (Diplomatarium Suecanum) — 44,000+ medieval Swedish charters dated
 
 ### `search_mpo`
 
-Search MPO (Medeltida Pergamentomslag) — 23,000+ medieval parchment fragments used as bookbinding covers, each with a IIIF manifest URL. Returns a markdown table with ID, category, dating, origin, script, and content.
+Search MPO (Medeltida Pergamentomslag) — 23,000+ medieval parchment fragments used as bookbinding covers, each with a IIIF manifest URL. Returns a markdown table with fragment signature, category, dating, origin, script, and content.
+
+Three query modes, combinable: a **keyword** (ranked full-text search over the German codicological descriptions), an **`mpo_id`** (exact lookup of one or more fragments by number), and a **`signature`** substring (shelf marks: RA number, CCM signum, volume signature, collection). At least one of keyword, `mpo_id` or a filter is required — none of them is individually mandatory.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `keyword` | str | *(required)* | Search term for full-text search across MPO fragment text |
+| `keyword` | str \| None | None | Search term for full-text search across MPO fragment text |
+| `mpo_id` | str \| None | None | Exact fragment lookup by id/signatur — see [Fragment identifiers](#fragment-identifiers). Several at once: `"Fr 6000, Fr 6001"` |
+| `signature` | str \| None | None | Optional filter: shelf mark — RA number, CCM signum, volume signature or collection (case-insensitive substring match) |
 | `offset` | int | 0 | Pagination start position (0, 25, 50, ...) |
 | `limit` | int | 25 | Maximum records to return per query |
 | `category` | str \| None | None | Optional filter: fragment category (case-insensitive substring match) |
 | `institution` | str \| None | None | Optional filter: holding institution (case-insensitive substring match) |
 | `script` | str \| None | None | Optional filter: script type (case-insensitive substring match) |
 | `research_context` | str \| None | None | Brief summary of research goal (logging only) |
+
+#### Fragment identifiers
+
+Every MPO fragment is one number — the `signatur` column of the source data, stored as `id` — but Riksarkivet's MPO database writes it as a signature: fragment 6000 is **`Fr 6000`**. `parse_mpo_reference` (in `ra-mcp-diplomatics-lib`) accepts every form of it, so `mpo_id`, `view_mpo` and a keyword that turns out to name a fragment all understand:
+
+| Form | Example |
+|------|---------|
+| Canonical signature | `Fr 6000`, `Fr. 6000`, `Fr6000` |
+| Bare fragment number | `6000` |
+| Namespaced | `MPO 6000`, `MPO Fr 6000` |
+| ARKIS image id | `R1006000` (= `1000000 + id`) |
+| Bildvisning / IIIF URL | `https://sok.riksarkivet.se/bildvisning/R1006000` |
+| NAD reference code | `SE/RA/80001/Nr 5001-6000/6000` |
+
+A `keyword` that carries an explicit marker (`Fr 6000`, `MPO 6000`, `R1006000`) is answered as an exact lookup rather than a text search. A **bare** number is ambiguous — it could be a fragment id, a year or a shelf mark — so the tool returns the exact record *and* the full-text hits, labelled, instead of silently picking one.
 
 ### `view_sdhk`
 
@@ -56,7 +75,7 @@ View an MPO parchment fragment in the document viewer with full codicological me
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `mpo_id` | int | *(required)* | MPO fragment ID (e.g. 1, 42) |
+| `mpo_id` | int \| str | *(required)* | MPO fragment id/signatur in any accepted form — `6000`, `"Fr 6000"`, `"R1006000"`, a bildvisning/IIIF URL |
 | `highlight_term` | str \| None | None | Optional search term to highlight |
 | `max_pages` | int | 20 | Maximum pages to load (≤ 20) |
 
@@ -66,7 +85,7 @@ View an MPO parchment fragment in the document viewer with full codicological me
 
 - **tools.py**: FastMCP server (`diplomatics_mcp`) setup, instructions, and registration of the search tools
 - **sdhk_tool.py**: `search_sdhk` tool registration and LanceDB connection handling
-- **mpo_tool.py**: `search_mpo` tool registration and LanceDB connection handling
+- **mpo_tool.py**: `search_mpo` tool registration, fragment-id routing, and LanceDB connection handling
 - **view_sdhk_tool.py**: `view_sdhk` viewer tool registration (opens a charter in the document viewer)
 - **view_mpo_tool.py**: `view_mpo` viewer tool registration (opens a fragment in the document viewer)
 - **formatter.py**: Formats SDHK/MPO results and record info for LLM consumption

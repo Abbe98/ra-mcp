@@ -239,8 +239,29 @@ def test_mpo_searchable_text_skips_empty_parts() -> None:
     minimal_row = {"signatur": "5", "titel": "Codex Aureus"}
     record = MPORecord.from_csv_row(minimal_row)
     text = record.searchable_text
-    assert text == "Codex Aureus"
+    # The signature is always present (it is derived from the id, never empty);
+    # every other empty column is dropped rather than padding the index with blanks.
+    assert text == "Fr 5 Codex Aureus"
     assert "  " not in text
+
+
+def test_mpo_searchable_text_includes_identifiers() -> None:
+    row = {"signatur": "6000", "ranr": "5121.04", "bestandssignatur": "1539:2:1", "titel": "Missale"}
+    text = MPORecord.from_csv_row(row).searchable_text
+    assert "Fr 6000" in text
+    assert "5121.04" in text
+    assert "1539:2:1" in text
+
+
+def test_mpo_signature_and_image_viewer_url() -> None:
+    record = MPORecord.from_csv_row({"signatur": "6000"})
+    assert record.signature == "Fr 6000"
+    assert record.image_viewer_url == "https://sok.riksarkivet.se/bildvisning/R1006000"
+
+
+def test_mpo_image_viewer_url_prefers_csv_column() -> None:
+    record = MPORecord.from_csv_row({"signatur": "1", "bildbetrachter": "https://example.invalid/R1000001"})
+    assert record.image_viewer_url == "https://example.invalid/R1000001"
 
 
 @pytest.mark.parametrize(

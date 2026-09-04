@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ra_mcp_diplomatics_lib.identifiers import format_mpo_signature, mpo_bildvisning_url
 from ra_mcp_diplomatics_lib.search_operations import SearchResult
 
 
@@ -90,73 +91,161 @@ def format_sdhk_results(result: SearchResult) -> str:
     return "\n".join(lines)
 
 
-def format_mpo_results(result: SearchResult) -> str:
-    """Format MPO search results as a markdown table for MCP/LLM consumption.
+# Shown with every MPO result set so the caller (and the user reading it) learns
+# that the numeric id *is* the fragment signature and how to hand it back.
+MPO_ID_HINT = "Fragment ids are MPO signatures — fragment 6000 is cited as 'Fr 6000'. To fetch one exactly, pass mpo_id='Fr 6000' (or 6000)."
 
-    Args:
-        result: SearchResult from DiplomaticsSearch.search_mpo.
 
-    Returns:
-        Markdown-formatted table string.
+def _mpo_signature(rec: dict[str, Any]) -> str:
+    """Canonical 'Fr <id>' signature for a record, derived from its id.
+
+    Derived rather than read from the stored ``signature`` column so records from
+    a dataset snapshot ingested before that column existed still render correctly.
     """
-    if not result.records:
-        if result.offset > 0:
-            return f"No more MPO results for '{result.keyword}' at offset {result.offset}. Total found: {result.total_hits}"
-        return f"No MPO results found for '{result.keyword}'."
+    mpo_id = rec.get("id")
+    if isinstance(mpo_id, int):
+        return format_mpo_signature(mpo_id)
+    return str(rec.get("signature", "") or mpo_id or "?")
 
-    lines: list[str] = []
-    lines.append(f"MPO results for '{result.keyword}': showing {len(result.records)} of {result.total_hits} (offset {result.offset})")
+
+def _mpo_detail_lines(rec: dict[str, Any], lines: list[str]) -> None:
+    """Append the detail block for one MPO record (identifiers, then description)."""
+    mpo_id = rec.get("id")
+    lines.append(f"**{_mpo_signature(rec)}** (id {mpo_id})")
+
+    for label, key in [
+        ("Title", "title"),
+        ("Author", "author"),
+        ("RA number", "ra_number"),
+        ("CCM signum", "ccm_signum"),
+        ("Volume signature", "volume_signature"),
+        ("Collection", "collection"),
+        ("Institution", "institution"),
+    ]:
+        val = rec.get(key, "") or ""
+        if val:
+            lines.append(f"{label}: {val}")
+
+    content = rec.get("content", "") or ""
+    if content:
+        lines.append(f"Content: {_truncate(content, 500)}")
+
+    manifest = rec.get("iiif_manifest", "") or rec.get("manifest_url", "") or ""
+    if manifest:
+        lines.append(f"IIIF Manifest: {manifest}")
+
+    bildvisning = rec.get("bildvisning_url", "") or ""
+    if not bildvisning and isinstance(mpo_id, int):
+        bildvisning = mpo_bildvisning_url(mpo_id)
+    if bildvisning:
+        lines.append(f"Bildvisning: {bildvisning}")
+
     lines.append("")
-    lines.append("PRESENT THESE RESULTS AS A TABLE.")
-    lines.append("")
 
-    # Table header
-    lines.append("| MPO | Category | Dating | Origin | Script | Content |")
-    lines.append("|-----|----------|--------|--------|--------|---------|")
 
-    for rec in result.records:
-        mpo_id = rec.get("id", "")
+def _mpo_table(records: list[dict[str, Any]], lines: list[str]) -> None:
+    """Append the markdown summary table for a set of MPO records."""
+    lines.append("| Fragment | Category | Dating | Origin | Script | Content |")
+    lines.append("|----------|----------|--------|--------|--------|---------|")
+
+    for rec in records:
+        signature = _escape_pipe(_mpo_signature(rec))
         category = _escape_pipe(rec.get("category", "") or "")
         dating = _escape_pipe(rec.get("dating", "") or "")
         origin = _escape_pipe(rec.get("origin_place", "") or "")
         script = _escape_pipe(rec.get("script", "") or "")
         content = _escape_pipe(_truncate(rec.get("content", "") or "", 120))
 
-        lines.append(f"| {mpo_id} | {category} | {dating} | {origin} | {script} | {content} |")
+        lines.append(f"| {signature} | {category} | {dating} | {origin} | {script} | {content} |")
 
     lines.append("")
 
-    # Detail blocks for records with longer content or manifest URLs
-    has_details = False
-    for rec in result.records:
-        content = rec.get("content", "") or ""
-        iiif_manifest = rec.get("iiif_manifest", "") or ""
-        bildvisning_url = rec.get("bildvisning_url", "") or ""
-        title = rec.get("title", "") or ""
-        author = rec.get("author", "") or ""
-        if len(content) > 120 or iiif_manifest or title:
-            if not has_details:
-                lines.append("### Details")
-                lines.append("")
-                has_details = True
-            mpo_id = rec.get("id", "")
-            lines.append(f"**MPO {mpo_id}**")
-            if title:
-                lines.append(f"Title: {title}")
-            if author:
-                lines.append(f"Author: {author}")
-            if content:
-                lines.append(f"Content: {_truncate(content, 500)}")
-            if iiif_manifest:
-                lines.append(f"IIIF Manifest: {iiif_manifest}")
-            if bildvisning_url:
-                lines.append(f"Bildvisning: {bildvisning_url}")
-            lines.append("")
+
+def format_mpo_results(result: SearchResult, *, query_label: str | None = None) -> str:
+    """Format MPO search results as a markdown table for MCP/LLM consumption.
+
+    Args:
+        result: SearchResult from DiplomaticsSearch.search_mpo.
+        query_label: Human description of the query, used in the header and the
+            no-results message. Defaults to the search keyword — needed because a
+            filter-only search (by signature or institution) has no keyword to name.
+
+    Returns:
+        Markdown-formatted table string.
+    """
+    label = query_label or f"'{result.keyword}'"
+
+    if not result.records:
+        if result.offset > 0:
+            return f"No more MPO results for {label} at offset {result.offset}. Total found: {result.total_hits}"
+        return f"No MPO results found for {label}."
+
+    lines: list[str] = []
+    lines.append(f"MPO results for {label}: showing {len(result.records)} of {result.total_hits} (offset {result.offset})")
+    lines.append("")
+    lines.append("PRESENT THESE RESULTS AS A TABLE.")
+    lines.append(MPO_ID_HINT)
+    lines.append("")
+
+    _mpo_table(result.records, lines)
+
+    # Detail blocks for records with longer content or a manifest/title worth citing.
+    detailed = [rec for rec in result.records if len(rec.get("content", "") or "") > 120 or rec.get("iiif_manifest") or rec.get("title")]
+    if detailed:
+        lines.append("### Details")
+        lines.append("")
+        for rec in detailed:
+            _mpo_detail_lines(rec, lines)
 
     # Pagination info
     next_offset = result.offset + result.limit
     if next_offset < result.total_hits:
         lines.append(f"More results available. Use offset={next_offset} to see the next page.")
+
+    return "\n".join(lines)
+
+
+def format_mpo_lookup(rows: list[dict[str, Any]], requested: list[int], *, note: str = "") -> str:
+    """Format the result of an exact fragment-id lookup.
+
+    Args:
+        rows: The records found, in the order the ids were requested.
+        requested: The fragment ids that were asked for — so ids that matched no
+            record can be named rather than silently dropped.
+        note: Optional leading line explaining how the ids were arrived at (e.g.
+            that a bare number in the keyword was read as a fragment id).
+
+    Returns:
+        Markdown-formatted string.
+    """
+    signatures = ", ".join(format_mpo_signature(mpo_id) for mpo_id in requested)
+    found_ids = {row.get("id") for row in rows}
+    missing = [mpo_id for mpo_id in requested if mpo_id not in found_ids]
+
+    lines: list[str] = []
+    if note:
+        lines.append(note)
+    if not rows:
+        lines.append(
+            f"No MPO fragment found for {signatures}. The MPO corpus holds ~23,000 fragments numbered from 1; check the number, or search by keyword instead."
+        )
+        return "\n".join(lines)
+
+    lines.append(f"MPO exact lookup for {signatures}: {len(rows)} of {len(requested)} found.")
+    lines.append("")
+    lines.append("PRESENT THESE RESULTS AS A TABLE.")
+    lines.append(MPO_ID_HINT)
+    lines.append("")
+
+    _mpo_table(rows, lines)
+
+    lines.append("### Details")
+    lines.append("")
+    for row in rows:
+        _mpo_detail_lines(row, lines)
+
+    if missing:
+        lines.append(f"Not found: {', '.join(format_mpo_signature(mpo_id) for mpo_id in missing)}.")
 
     return "\n".join(lines)
 
@@ -214,8 +303,13 @@ def format_mpo_info(row: dict[str, Any]) -> str:
         lines.append(f"*{manuscript_type}*")
     lines.append("")
 
+    lines.append(f"**Signature:** {_mpo_signature(row)}")
+
     for label, key in [
         ("Type", "manuscript_type"),
+        ("RA number", "ra_number"),
+        ("CCM signum", "ccm_signum"),
+        ("Volume signature", "volume_signature"),
         ("Category", "category"),
         ("Title", "title"),
         ("Author", "author"),
