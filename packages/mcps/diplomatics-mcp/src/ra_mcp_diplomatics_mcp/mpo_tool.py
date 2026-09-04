@@ -28,6 +28,9 @@ def register_mpo_tool(mcp: FastMCP) -> None:
         annotations={"readOnlyHint": True, "openWorldHint": True},
         description=(
             "Search MPO (Medeltida Pergamentomslag) — 23,000+ medieval parchment fragments used as bookbinding covers. "
+            "Also looks up a fragment by its signatur/ID: MPO fragments are cited as 'Fr <number>' (e.g. 'Fr 6000'), "
+            "and the number is the MPO ID. A keyword of 'Fr 6000', 'MPO 6000' or just '6000' returns that exact fragment "
+            "(a bare number additionally returns full-text hits for the number after the exact match). "
             "Returns results as a markdown table with key columns (ID, category, dating, origin, script, content). "
             "ALWAYS present search results to the user as a table — do not convert to prose. "
             "Each result includes a IIIF manifest URL for viewing fragment images — pass this to view_manifest. "
@@ -37,7 +40,12 @@ def register_mpo_tool(mcp: FastMCP) -> None:
     def search_mpo(
         keyword: Annotated[
             str,
-            Field(description="Search term for full-text search across MPO fragment text."),
+            Field(
+                description=(
+                    "Search term for full-text search across MPO fragment text, or a fragment signatur/ID "
+                    "for an exact lookup: 'Fr 6000', 'MPO 6000' or '6000' all resolve to MPO fragment 6000."
+                )
+            ),
         ],
         offset: Annotated[
             int,
@@ -64,8 +72,8 @@ def register_mpo_tool(mcp: FastMCP) -> None:
             Field(description="Brief summary of the user's research goal. Used for logging only."),
         ] = None,
     ) -> str:
-        """Search MPO medieval parchment fragment corpus using full-text search."""
-        if err := require_keyword(keyword, "'liturgy'"):
+        """Search MPO fragments by full text, or look one up by signatur/ID ("Fr 6000", "6000")."""
+        if err := require_keyword(keyword, "'liturgy' or a fragment signatur like 'Fr 6000'"):
             return err
 
         if research_context:

@@ -11,6 +11,8 @@ diplomatics_mcp = FastMCP(
     instructions=(
         "Search medieval Swedish documents: SDHK (44,000+ medieval charters before 1540) "
         "and MPO (23,000+ medieval parchment fragments). "
+        "MPO fragments are cited by signatur 'Fr <number>' (e.g. 'Fr 6000'); the number is the MPO ID, "
+        "and search_mpo resolves 'Fr 6000', 'MPO 6000' or '6000' to that exact fragment. "
         "Both return IIIF manifest URLs — use view_manifest to view document images."
     ),
 )

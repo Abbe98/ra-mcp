@@ -2,7 +2,7 @@
 
 __version__ = "0.3.0"
 
-from .search_operations import DiplomaticsSearch
+from .search_operations import DiplomaticsSearch, MPOSignature, format_mpo_signature, parse_mpo_signature
 
 
-__all__ = ["DiplomaticsSearch"]
+__all__ = ["DiplomaticsSearch", "MPOSignature", "format_mpo_signature", "parse_mpo_signature"]

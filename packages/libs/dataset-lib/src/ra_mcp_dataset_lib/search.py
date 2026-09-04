@@ -247,6 +247,11 @@ def equals(column: str, value: str | int) -> str:
     return f"{column} = {_lit(value)}"
 
 
+def not_equals(column: str, value: str | int) -> str:
+    """Exclusion predicate: ``col != value`` (e.g. drop a row already pinned to the top)."""
+    return f"{column} != {_lit(value)}"
+
+
 def at_least(column: str, value: str | int) -> str:
     """Lower-bound predicate: ``col >= value`` (NULLs are excluded, as in SQL)."""
     return f"{column} >= {_lit(value)}"

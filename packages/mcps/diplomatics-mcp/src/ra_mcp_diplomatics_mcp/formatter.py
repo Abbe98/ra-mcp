@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ra_mcp_diplomatics_lib.search_operations import SearchResult
+from ra_mcp_diplomatics_lib.search_operations import MPOSignature, SearchResult, format_mpo_signature, parse_mpo_signature
 
 
 def _truncate(text: str, max_len: int) -> str:
@@ -90,6 +90,82 @@ def format_sdhk_results(result: SearchResult) -> str:
     return "\n".join(lines)
 
 
+# Archival identifiers and codicological facts shown for an exact-signatur match.
+_MPO_EXACT_DETAIL_FIELDS: list[tuple[str, str]] = [
+    ("Type", "manuscript_type"),
+    ("Dating", "dating"),
+    ("Institution", "institution"),
+    ("Collection", "collection"),
+    ("Volume signature", "volume_signature"),
+    ("RA number", "ra_number"),
+    ("CCM signum", "ccm_signum"),
+    ("Codex", "codex"),
+    ("Material", "material"),
+    ("Leaves", "leaf_count"),
+    ("Size", "format_size"),
+]
+
+
+def _mpo_no_results(result: SearchResult, signature: MPOSignature | None) -> str:
+    """Message for an empty MPO page: paginated past the end, an unknown signatur, or no hits."""
+    if result.offset > 0:
+        return f"No more MPO results for '{result.keyword}' at offset {result.offset}. Total found: {result.total_hits}"
+    if signature and signature.explicit:
+        return (
+            f"No MPO fragment with signatur '{format_mpo_signature(signature.id)}' (MPO ID {signature.id}) found: "
+            "either no such fragment exists (fragment numbers run from 1 to about 23,000) "
+            "or it falls outside the given category/institution/script filters."
+        )
+    return f"No MPO results found for '{result.keyword}'."
+
+
+def _mpo_exact_match_note(keyword: str, signature: MPOSignature, exact_id: int) -> str:
+    """One-line explanation that the keyword resolved to fragment ``exact_id``."""
+    if signature.explicit:
+        return f"Exact match: '{keyword}' is the signatur of MPO fragment {exact_id} ({format_mpo_signature(exact_id)})."
+    return (
+        f"'{keyword}' is also an MPO fragment signatur ({format_mpo_signature(exact_id)}): "
+        f"that fragment is listed first, followed by full-text hits for '{keyword}'."
+    )
+
+
+def _mpo_detail_block(rec: dict[str, Any], *, is_exact: bool) -> list[str]:
+    """Detail lines for one MPO record, or ``[]`` when the table row already says it all.
+
+    Records with long content, a IIIF manifest or a title get a block; the
+    exact-signatur match always does, with its identifying archival fields,
+    since a signatur lookup is a request for *that* fragment's record.
+    """
+    content = rec.get("content", "") or ""
+    iiif_manifest = rec.get("iiif_manifest", "") or ""
+    bildvisning_url = rec.get("bildvisning_url", "") or ""
+    title = rec.get("title", "") or ""
+    author = rec.get("author", "") or ""
+    if not (is_exact or len(content) > 120 or iiif_manifest or title):
+        return []
+
+    mpo_id = rec.get("id", "")
+    lines = [f"**MPO {mpo_id}**" + (f" (signatur {format_mpo_signature(mpo_id)}, exact match)" if is_exact else "")]
+    if title:
+        lines.append(f"Title: {title}")
+    if author:
+        lines.append(f"Author: {author}")
+    if is_exact:
+        for label, key in _MPO_EXACT_DETAIL_FIELDS:
+            # Source data pads some signatures with long runs of spaces; collapse them.
+            val = " ".join((rec.get(key, "") or "").split())
+            if val:
+                lines.append(f"{label}: {val}")
+    if content:
+        lines.append(f"Content: {_truncate(content, 500)}")
+    if iiif_manifest:
+        lines.append(f"IIIF Manifest: {iiif_manifest}")
+    if bildvisning_url:
+        lines.append(f"Bildvisning: {bildvisning_url}")
+    lines.append("")
+    return lines
+
+
 def format_mpo_results(result: SearchResult) -> str:
     """Format MPO search results as a markdown table for MCP/LLM consumption.
 
@@ -99,14 +175,21 @@ def format_mpo_results(result: SearchResult) -> str:
     Returns:
         Markdown-formatted table string.
     """
+    # A keyword that is a fragment signatur ("Fr 6000" / "6000") resolves to an
+    # exact record, which the lib pins as the first row (and excludes from the
+    # full-text hits), so the id of the first row tells us whether it was found.
+    signature = parse_mpo_signature(result.keyword)
+    exact_id = signature.id if signature and result.records and result.records[0].get("id") == signature.id else None
+
     if not result.records:
-        if result.offset > 0:
-            return f"No more MPO results for '{result.keyword}' at offset {result.offset}. Total found: {result.total_hits}"
-        return f"No MPO results found for '{result.keyword}'."
+        return _mpo_no_results(result, signature)
 
     lines: list[str] = []
     lines.append(f"MPO results for '{result.keyword}': showing {len(result.records)} of {result.total_hits} (offset {result.offset})")
     lines.append("")
+    if signature is not None and exact_id is not None:
+        lines.append(_mpo_exact_match_note(result.keyword, signature, exact_id))
+        lines.append("")
     lines.append("PRESENT THESE RESULTS AS A TABLE.")
     lines.append("")
 
@@ -126,32 +209,12 @@ def format_mpo_results(result: SearchResult) -> str:
 
     lines.append("")
 
-    # Detail blocks for records with longer content or manifest URLs
-    has_details = False
+    # Detail blocks (see _mpo_detail_block for which records get one).
+    details: list[str] = []
     for rec in result.records:
-        content = rec.get("content", "") or ""
-        iiif_manifest = rec.get("iiif_manifest", "") or ""
-        bildvisning_url = rec.get("bildvisning_url", "") or ""
-        title = rec.get("title", "") or ""
-        author = rec.get("author", "") or ""
-        if len(content) > 120 or iiif_manifest or title:
-            if not has_details:
-                lines.append("### Details")
-                lines.append("")
-                has_details = True
-            mpo_id = rec.get("id", "")
-            lines.append(f"**MPO {mpo_id}**")
-            if title:
-                lines.append(f"Title: {title}")
-            if author:
-                lines.append(f"Author: {author}")
-            if content:
-                lines.append(f"Content: {_truncate(content, 500)}")
-            if iiif_manifest:
-                lines.append(f"IIIF Manifest: {iiif_manifest}")
-            if bildvisning_url:
-                lines.append(f"Bildvisning: {bildvisning_url}")
-            lines.append("")
+        details += _mpo_detail_block(rec, is_exact=exact_id is not None and rec.get("id") == exact_id)
+    if details:
+        lines += ["### Details", "", *details]
 
     # Pagination info
     next_offset = result.offset + result.limit

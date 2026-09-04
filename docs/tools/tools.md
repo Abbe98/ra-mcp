@@ -124,7 +124,7 @@ When the optional dataset modules are installed, the server exposes namespaced s
 
 | Module | Tools |
 |--------|-------|
-| `diplomatics` | `search_sdhk`, `search_mpo`, `view_sdhk`, `view_mpo` |
+| `diplomatics` | `search_sdhk`, `search_mpo`, `view_sdhk`, `view_mpo` — `search_mpo` also resolves a fragment signatur/ID (`Fr 6000`, `MPO 6000` or `6000`) to that exact fragment |
 | `sbl` | `search_sbl`, `view_sbl_article`, `load_sbl_article` |
 | `sjomanshus` | `search_liggare`, `search_matrikel` |
 | `filmcensur` | `search_filmreg` |

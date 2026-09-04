@@ -22,6 +22,7 @@ from ra_mcp_dataset_lib import (
     equals,
     format_results,
     lancedb_fts_search,
+    not_equals,
     require_keyword,
     require_ordered_range,
     text_contains,
@@ -190,6 +191,13 @@ def test_text_contains_is_case_insensitive_substring(db):
     # case-insensitively via lower(col) LIKE '%nummer%'.
     result = lancedb_fts_search(db, "t", "häst", limit=100, where=text_contains("searchable_text", "NUMMER"))
     assert result.total_hits == 40
+
+
+def test_not_equals_excludes_one_row(db):
+    # ids 0..39 match 'häst'; dropping id 5 leaves 39 rows, none of them 5.
+    result = lancedb_fts_search(db, "t", "häst", limit=100, where=not_equals("id", 5))
+    assert result.total_hits == 39
+    assert all(r["id"] != 5 for r in result.records)
 
 
 def test_any_of_ors_predicates(db):
